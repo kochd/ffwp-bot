@@ -36,8 +36,8 @@ loop do
       case
       when hdiff["key"] =~ /\.flags\.online$/
         channel.send hdiff["new"] ?
-        "#{last.first[1]["nodeinfo"]["hostname"]} ist jetzt online (Offline seit: #{humanize(Time.now - Time.now.utc_offset - Time.parse(last.first[1]["lastseen"]))}) <#{MESHVIEWER_URI}/#!n:#{last.first[0]}>" :
-          "#{last.first[1]["nodeinfo"]["hostname"]} ist jetzt offline <#{MESHVIEWER_URI}/#!n:#{last.first[0]}>"
+        "#{last.first[1]["nodeinfo"]["hostname"]} ist jetzt online (Offline seit: #{humanize(Time.now - Time.now.utc_offset - Time.parse(last.first[1]["lastseen"]))}) #{MESHVIEWER_URI}/#!n:#{last.first[0]}" :
+          "#{last.first[1]["nodeinfo"]["hostname"]} ist jetzt offline #{MESHVIEWER_URI}/#!n:#{last.first[0]}"
       else p hdiff
       end
     end
