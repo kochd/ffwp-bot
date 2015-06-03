@@ -1,5 +1,5 @@
 MESHVIEWER_URI = "https://map.westpfalz.freifunk.net/meshviewer"
-CHANNEL = "#freifunk-westpfalz.log"
+CHANNEL = "#freifunk-westpfalz.log2"
 STATS_FILE = "./ffwp-stats.json"
 TIMEFORMAT = "%d.%m.%y %H:%M"
 ["time", "date", "json", "open-uri", "hashdiff", "cinch"].each{|gem| require gem}
@@ -47,7 +47,7 @@ loop do
   File.write(STATS_FILE, stats.to_json) unless File.exist?(STATS_FILE)
   last_stats = JSON.parse(File.read(STATS_FILE))
   current_state.each{ |_ ,v| stats["clients"]["count"] += v["statistics"]["clients"].to_i}
-  stats["nodes"]["count"] = current_state.select{ |_, v| v["flags"]["online"] && !v["flags"]["gateway"] }.count
+  stats["nodes"]["count"] = current_state.select{ |_, v| v["flags"]["online"]}.count
   stats["clients"] = last_stats["clients"] if stats["clients"]["count"] <= last_stats["clients"]["count"]
   stats["nodes"] = last_stats["nodes"] if stats["nodes"]["count"] <= last_stats["nodes"]["count"]
   File.write(STATS_FILE, stats.to_json)
