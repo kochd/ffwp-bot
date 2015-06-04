@@ -1,14 +1,24 @@
+# -*- coding: utf-8 -*-
 MESHVIEWER_URI = "https://map.westpfalz.freifunk.net/meshviewer"
-CHANNEL = "#freifunk-westpfalz.log2"
+NICK = "ffwp-status"
+CHANNEL = "#freifunk-westpfalz"
+LOG_CHANNEL = "#freifunk-westpfalz.log"
 STATS_FILE = "./ffwp-stats.json"
 TIMEFORMAT = "%d.%m.%y %H:%M"
 ["time", "date", "json", "open-uri", "hashdiff", "cinch"].each{|gem| require gem}
-bot = Cinch::Bot.new { configure {|c| c.server = "irc.freenode.org"; c.channels = [CHANNEL]; c.nick = "FFWP-Log-#{rand(0..999)}"}
+bot = Cinch::Bot.new { configure {|c| c.server = "irc.freenode.org"; c.channels = [CHANNEL, LOG_CHANNEL]; c.nick = NICK}
   on :message, /^!highscore$/i do |m|
-    score = JSON.parse(File.read(STATS_FILE))
-    m.reply "Der Highscore liegt bei #{score["nodes"]["count"]} Knoten (#{DateTime.parse(score["nodes"]["date"]).strftime TIMEFORMAT}) und #{score["clients"]["count"]} Clients (#{DateTime.parse(score["clients"]["date"]).strftime TIMEFORMAT})"
+    m.reply highscore
+  end
+  on :message, /^!status$/i do |m|
+    m.reply status
+  end
+  on :message, /^!help$/i do |m|
+    m.reply "!status Liefert die aktuelle Anzahl an Knoten und Clients"
+    m.reply "!highscore Liefert die Highscore für Knoten und Clients"
+    m.reply "Du findest meinen Log in #{LOG_CHANNEL}"
   end }
-channel = Cinch::Channel.new(CHANNEL,bot)
+log_channel = Cinch::Channel.new(LOG_CHANNEL,bot)
 Thread.new { bot.start } ; sleep 1 until bot.channels.include?(CHANNEL)
 
 def humanize secs
@@ -20,11 +30,34 @@ def humanize secs
     "#{n.to_i} #{name}" }.compact.reverse.join(' ')
 end
 
+def highscore
+  score = JSON.parse(File.read(STATS_FILE))
+  "Der Highscore liegt bei #{score["nodes"]["count"]} Knoten (#{DateTime.parse(score["nodes"]["date"]).strftime TIMEFORMAT}) und #{score["clients"]["count"]} Clients (#{DateTime.parse(score["clients"]["date"]).strftime TIMEFORMAT})"
+end
+
+def status
+  begin
+    current_state = JSON.parse(URI.parse(MESHVIEWER_URI + '/nodes.json').read)['nodes']
+  rescue JSON::ParserError => e
+    e
+  end
+  stats = {"clients" => {"count" => 0, "date" => DateTime.now}, "nodes" => {"count" => 0, "date" => DateTime.now}}
+  current_state.each{ |_ ,v| stats["clients"]["count"] += v["statistics"]["clients"].to_i}
+  stats["nodes"]["count"] = current_state.select{ |_, v| v["flags"]["online"]}.count
+  "Aktuell sind #{stats["nodes"]["count"]} Knoten und #{stats["clients"]["count"]} Clients online"
+end
+
 loop do
-  current_state = JSON.parse(URI.parse(MESHVIEWER_URI + '/nodes.json').read)['nodes']
+  time_start = Time.now
+  begin
+    current_state = JSON.parse(URI.parse(MESHVIEWER_URI + '/nodes.json').read)['nodes']
+  rescue JSON::ParserError => e
+    next
+  end
   @last_state ||= current_state
   current_state.each do |current|
     last = @last_state.select{|l| l == current[0]}.flatten
+    next if last.empty?
     last = [last].to_h
     current = [current].to_h
     diffs = HashDiff.diff(last, current)
@@ -35,7 +68,7 @@ loop do
     hdiffs.each do |hdiff|
       case
       when hdiff["key"] =~ /\.flags\.online$/
-        channel.send hdiff["new"] ?
+        log_channel.send hdiff["new"] ?
         "#{last.first[1]["nodeinfo"]["hostname"]} ist jetzt online (Offline seit: #{humanize(Time.now - Time.now.utc_offset - Time.parse(last.first[1]["lastseen"]))}) #{MESHVIEWER_URI}/#!n:#{last.first[0]}" :
           "#{last.first[1]["nodeinfo"]["hostname"]} ist jetzt offline #{MESHVIEWER_URI}/#!n:#{last.first[0]}"
       else p hdiff
@@ -52,5 +85,5 @@ loop do
   stats["nodes"] = last_stats["nodes"] if stats["nodes"]["count"] <= last_stats["nodes"]["count"]
   File.write(STATS_FILE, stats.to_json)
   @last_state = current_state.dup
-  sleep 60
+  sleep 60 - ( Time.now - time_start )
 end
