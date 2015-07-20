@@ -48,10 +48,11 @@ def status
 end
 
 loop do
-  time_start = Time.now
   begin
     current_state = JSON.parse(URI.parse(MESHVIEWER_URI + '/nodes.json').read)['nodes']
-  rescue JSON::ParserError => e
+  rescue JSON::ParserError,
+    Errno::ENETUNREACH,
+    OpenURI::HTTPError => e
     next
   end
   @last_state ||= current_state
@@ -71,6 +72,10 @@ loop do
         log_channel.send hdiff["new"] ?
         "#{last.first[1]["nodeinfo"]["hostname"]} ist jetzt online (Offline seit: #{humanize(Time.now - Time.now.utc_offset - Time.parse(last.first[1]["lastseen"]))}) #{MESHVIEWER_URI}/#!n:#{last.first[0]}" :
           "#{last.first[1]["nodeinfo"]["hostname"]} ist jetzt offline #{MESHVIEWER_URI}/#!n:#{last.first[0]}"
+      when hdiff["key"] =~ /\.software\.autoupdater\.brach$/
+        log_channel.send "#{last.first[1]["nodeinfo"]["hostname"]} hat den Update Branch gewechselt von (#{hdiff["old"]} -> #{hdiff["new"]}) #{MESHVIEWER_URI}/#!n:#{last.first[0]}"
+      when hdiff["key"] =~ /\.software\.firmware\.release$/
+        log_channel.send "#{last.first[1]["nodeinfo"]["hostname"]} hat eine neue Firmware installiert (#{hdiff["old"]} -> #{hdiff["new"]}) #{MESHVIEWER_URI}/#!n:#{last.first[0]}"
       else p hdiff
       end
     end
@@ -85,5 +90,5 @@ loop do
   stats["nodes"] = last_stats["nodes"] if stats["nodes"]["count"] <= last_stats["nodes"]["count"]
   File.write(STATS_FILE, stats.to_json)
   @last_state = current_state.dup
-  sleep 60 - ( Time.now - time_start )
+  sleep 60
 end
