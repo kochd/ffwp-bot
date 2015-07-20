@@ -6,7 +6,7 @@ LOG_CHANNEL = "#freifunk-westpfalz.log"
 STATS_FILE = "./ffwp-stats.json"
 TIMEFORMAT = "%d.%m.%y %H:%M"
 ["time", "date", "json", "open-uri", "hashdiff", "cinch"].each{|gem| require gem}
-bot = Cinch::Bot.new { configure {|c| c.server = "irc.freenode.org"; c.channels = [CHANNEL, LOG_CHANNEL]; c.nick = NICK}
+bot = Cinch::Bot.new { configure {|c| c.server = "irc.hackint.org"; c.channels = [CHANNEL, LOG_CHANNEL]; c.nick = NICK}
   on :message, /^!highscore$/i do |m|
     m.reply highscore
   end
