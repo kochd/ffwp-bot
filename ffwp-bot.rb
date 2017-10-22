@@ -1,24 +1,27 @@
 # -*- coding: utf-8 -*-
-MESHVIEWER_URI = "https://map.westpfalz.freifunk.net/meshviewer"
+MESHVIEWER_URI = "https://map.freifunk-westpfalz.de"
 NICK = "ffwp-status"
-CHANNEL = "#freifunk-westpfalz"
-LOG_CHANNEL = "#freifunk-westpfalz.log"
+CHANNEL = "#ffwp"
+LOG_CHANNEL = "#ffwp.log"
 STATS_FILE = "./ffwp-stats.json"
 TIMEFORMAT = "%d.%m.%y %H:%M"
-["time", "date", "json", "open-uri", "hashdiff", "cinch"].each{|gem| require gem}
+
+["logger", "time", "date", "json", "open-uri", "hashdiff", "cinch"].each{|gem| require gem}
+LOGGER = Logger.new(STDOUT)
 bot = Cinch::Bot.new { configure {|c| c.server = "irc.hackint.org"; c.channels = [CHANNEL, LOG_CHANNEL]; c.nick = NICK}
-  on :message, /^!highscore$/i do |m|
+  on :message, /(^!highscore$|^.h$)/i do |m|
     m.reply highscore
   end
-  on :message, /^!status$/i do |m|
+  on :message, /(^!status$|^.s$)/i do |m|
     m.reply status
   end
-  on :message, /^!help$/i do |m|
+  on :message, /(^!help$)/i do |m|
     m.reply "!status Liefert die aktuelle Anzahl an Knoten und Clients"
     m.reply "!highscore Liefert die Highscore für Knoten und Clients"
     m.reply "Du findest meinen Log in #{LOG_CHANNEL}"
   end }
 log_channel = Cinch::Channel.new(LOG_CHANNEL,bot)
+channel = Cinch::Channel.new(CHANNEL,bot)
 Thread.new { bot.start } ; sleep 1 until bot.channels.include?(CHANNEL)
 
 def humanize secs
@@ -39,11 +42,11 @@ def status
   begin
     current_state = JSON.parse(URI.parse(MESHVIEWER_URI + '/nodes.json').read)['nodes']
   rescue JSON::ParserError => e
-    e
+    LOGGER.error e.to_s
   end
   stats = {"clients" => {"count" => 0, "date" => DateTime.now}, "nodes" => {"count" => 0, "date" => DateTime.now}}
-  current_state.each{ |_ ,v| stats["clients"]["count"] += v["statistics"]["clients"].to_i}
-  stats["nodes"]["count"] = current_state.select{ |_, v| v["flags"]["online"]}.count
+  current_state.each{ |v| stats["clients"]["count"] += v["statistics"]["clients"].to_i}
+  stats["nodes"]["count"] = current_state.select{ |v| v["flags"]["online"]}.count
   "Aktuell sind #{stats["nodes"]["count"]} Knoten und #{stats["clients"]["count"]} Clients online"
 end
 
@@ -51,8 +54,13 @@ loop do
   begin
     current_state = JSON.parse(URI.parse(MESHVIEWER_URI + '/nodes.json').read)['nodes']
   rescue JSON::ParserError,
-    Errno::ENETUNREACH,
-    OpenURI::HTTPError => e
+         Errno::ECONNRESET,
+         Errno::ENETUNREACH,
+         OpenURI::HTTPError,
+         Net::ReadTimeout,
+         OpenSSL::SSL::SSLError => e
+    LOGGER.error e.to_s
+    sleep 60
     next
   end
   @last_state ||= current_state
@@ -84,11 +92,14 @@ loop do
   stats = {"clients" => {"count" => 0, "date" => DateTime.now}, "nodes" => {"count" => 0, "date" => DateTime.now}}
   File.write(STATS_FILE, stats.to_json) unless File.exist?(STATS_FILE)
   last_stats = JSON.parse(File.read(STATS_FILE))
-  current_state.each{ |_ ,v| stats["clients"]["count"] += v["statistics"]["clients"].to_i}
-  stats["nodes"]["count"] = current_state.select{ |_, v| v["flags"]["online"]}.count
+  current_state.each{ |v| stats["clients"]["count"] += v["statistics"]["clients"].to_i}
+  stats["nodes"]["count"] = current_state.select{ |v| v["flags"]["online"]}.count
   stats["clients"] = last_stats["clients"] if stats["clients"]["count"] <= last_stats["clients"]["count"]
   stats["nodes"] = last_stats["nodes"] if stats["nodes"]["count"] <= last_stats["nodes"]["count"]
-  File.write(STATS_FILE, stats.to_json)
+  unless stats == last_stats
+    File.write(STATS_FILE, stats.to_json)
+    log_channel.send "Neuer Highscore: #{highscore}"
+  end
   @last_state = current_state.dup
   sleep 60
 end
